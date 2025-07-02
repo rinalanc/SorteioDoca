@@ -1,3 +1,0 @@
-streamlit
-openpyxl
-pandas # Se você decidir usar pandas para facilitar o manuseio de dadosExcel
