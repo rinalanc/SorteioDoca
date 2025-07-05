@@ -1,3 +1,10 @@
+# app.py - Versão: Sorteio Prime (Configurações específicas para a temporada de Prime Day)
+# Esta versão inclui:
+# - Duas vagas para "Azul".
+# - Múltiplas vagas para "Recirculação", "Auditoria", "Shuttle", "Carregamento", "GAP".
+# - Funções extras ativadas ("Hatae", "Triagem Hatae", "Curva", "Bipando Hatae") como parte do sorteio geral.
+# - Regras de exclusão e probabilidade expandidas para incluir as novas funções extras e grupos conceituais.
+
 import streamlit as st
 import random
 import collections
@@ -12,7 +19,7 @@ CORE_POSITIONS = [
     "Recirculação 1", "Recirculação 2", "Recirculação 3",
     "Pesado 1", "Pesado 2",
     "Auditoria 1", "Auditoria 2", "Auditoria 3",
-    "Azul 1", "Azul 2",
+    "Azul 1", "Azul 2", # Duas vagas no Azul para o Prime Day
     "Shuttle 1", "Shuttle 2", "Shuttle 3",
     "Carregamento 1", "Carregamento 2",
     "GAP 1", "GAP 2"
@@ -76,10 +83,12 @@ EXCLUSIONS = {
         "GeneralDraw": ["Pesado 1", "Pesado 2"]
     },
     "silvnpau": {
-        # Sem exclusões específicas.
+        "GeneralCeia": ["Carregamento 1", "Carregamento 2"], # Nova exclusão
+        "GeneralDraw": ["Carregamento 1", "Carregamento 2"] # Nova exclusão
     },
     "sousthib": {
-        # Sem exclusões específicas.
+        "GeneralCeia": ["Carregamento 1", "Carregamento 2", "Azul 1", "Azul 2"], # Nova exclusão
+        "GeneralDraw": ["Carregamento 1", "Carregamento 2", "Azul 1", "Azul 2"] # Nova exclusão
     },
     "ferrlucq": {
         "GeneralCeia": ["Azul 1", "Azul 2", "Carregamento 1", "Carregamento 2"],
@@ -94,11 +103,11 @@ EXCLUSIONS = {
         "GeneralDraw": ["Azul 1", "Azul 2", "Carregamento 1", "Carregamento 2"]
     },
     "piluanaq": {
-        # Sem exclusões específicas.
+        "GeneralCeia": ["Carregamento 1", "Carregamento 2", "Azul 1", "Azul 2"], # Nova exclusão
+        "GeneralDraw": ["Carregamento 1", "Carregamento 2", "Azul 1", "Azul 2"] # Nova exclusão
     },
     "pretojon": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
+        "GeneralDraw": { "Azul 1": 3, "Azul 2": 3, "Auditoria 1": 2, "Auditoria 2": 2, "Auditoria 3": 2, "Carregamento 1": 2, "Carregamento 2": 2 }
     },
     "EVAWWELI": {
         "GeneralCeia": [],
@@ -185,7 +194,7 @@ INCREASED_PROBABILITY = {
     "silvnpau": {
         "GeneralCeia": { "Azul 1": 1, "Azul 2": 1, "Carregamento 1": 2, "Carregamento 2": 2, "Recirculação 1": 1, "Recirculação 2": 1, "Recirculação 3": 1, "Pesado 1": 1, "Pesado 2": 1, "Auditoria 1": 1, "Auditoria 2": 1, "Auditoria 3": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "GAP 1": 1, "GAP 2": 1 },
         "GeneralDraw": {
-            "Azul 1": 4, "Azul 2": 4, "Carregamento 1": 2, "Carregamento 2": 2,
+            "Azul 1": 4, "Azul 2": 4, "Carregamento 1": 2, "Carregamento 2": 2, # Carregamento 1/2 já estavam aqui, mas agora são 2 de peso
             "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1,
             "Bipando Hatae 1": 1, "Bipando Hatae 2": 1, "Curva - Tirar Pacote": 1,
             "Triagem Hatae 1": 1, "Triagem Hatae 2": 1, "Triagem Hatae 3": 1, "Triagem Hatae 4": 1, "Curva 2 - Tirar Pacote": 1
@@ -194,7 +203,7 @@ INCREASED_PROBABILITY = {
     "sousthib": {
         "GeneralCeia": { "Azul 1": 1, "Azul 2": 1, "Carregamento 1": 2, "Carregamento 2": 2, "Pesado 1": 2, "Pesado 2": 2, "Auditoria 1": 1, "Auditoria 2": 1, "Auditoria 3": 1, "Recirculação 1": 1, "Recirculação 2": 1, "Recirculação 3": 1, "GAP 1": 1, "GAP 2": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1 },
         "GeneralDraw": {
-            "Azul 1": 4, "Azul 2": 4, "Carregamento 1": 2, "Carregamento 2": 2, "Pesado 1": 2, "Pesado 2": 2,
+            "Azul 1": 4, "Azul 2": 4, "Carregamento 1": 2, "Carregamento 2": 2, "Pesado 1": 2, "Pesado 2": 2, # Carregamento 1/2 já estavam aqui, mas agora são 2 de peso
             "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1,
             "Bipando Hatae 1": 1, "Bipando Hatae 2": 1, "Curva - Tirar Pacote": 1,
             "Triagem Hatae 1": 1, "Triagem Hatae 2": 1, "Triagem Hatae 3": 1, "Triagem Hatae 4": 1, "Curva 2 - Tirar Pacote": 1
@@ -240,12 +249,64 @@ INCREASED_PROBABILITY = {
         }
     },
     "piluanaq": {
-        "GeneralCeia": { "Bipando Hatae 1": 2, "Bipando Hatae 2": 2, "Recirculação 1": 2, "Recirculação 2": 2, "Recirculação 3": 2, "Auditoria 1": 2, "Auditoria 2": 2, "Auditoria 3": 2, "GAP 1": 2, "GAP 2": 2, "Pesado 1": 1, "Pesado 2": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Carregamento 1": 1, "Carregamento 2": 1 },
+        "GeneralCeia": { "Bipando Hatae 1": 2, "Bipando Hatae 2": 2, "Recirculação 1": 2, "Recirculação 2": 2, "Recirculação 3": 2, "Auditoria 1": 2, "Auditoria 2": 2, "Auditoria 3": 2, "GAP 1": 2, "GAP 2": 2, "Pesado 1": 1, "Pesado 2": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1 }, # Removido Carregamento e Azul
         "GeneralDraw": {
-            "Bipando Hatae 1": 2, "Bipando Hatae 2": 2, "Recirculação 1": 2, "Recirculação 2": 2, "Recirculação 3": 2, "Auditoria 1": 2, "Auditoria 2": 2, "Auditoria 3": 2, "GAP 1": 2, "GAP 2": 2, "Pesado 1": 1, "Pesado 2": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Carregamento 1": 1, "Carregamento 2": 1,
+            "Bipando Hatae 1": 2, "Bipando Hatae 2": 2, "Recirculação 1": 2, "Recirculação 2": 2, "Recirculação 3": 2, "Auditoria 1": 2, "Auditoria 2": 2, "Auditoria 3": 2, "GAP 1": 2, "GAP 2": 2, "Pesado 1": 1, "Pesado 2": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, # Removido Carregamento e Azul
             "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1, "Curva - Tirar Pacote": 1,
             "Triagem Hatae 1": 1, "Triagem Hatae 2": 1, "Triagem Hatae 3": 1, "Triagem Hatae 4": 1, "Curva 2 - Tirar Pacote": 1
         }
+    },
+    "EVAWWELI": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "rabsouza": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "lucenama": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "pedrour": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "ferrlnat": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "doubsant": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "vinichda": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "hjosesil": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "tmarcoso": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "luizsanp": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "nasckluc": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "salucasi": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
+    },
+    "mlucneri": {
+        "GeneralCeia": [],
+        "GeneralDraw": []
     }
 }
 
@@ -497,7 +558,8 @@ def draw_activated_functions(associates, exclusions, increased_probability, acti
         chosen_conceptual_role = None # Now this will be an actual function name
 
         if not conceptual_role_pool_for_draw: # If no more functions to draw
-            drawn_assignments[f"Sorteio Posição {i+1} (Nenhuma Função Disponível)"] = "(Vazio)"
+            # Append a special key to ensure it's captured in the output even if no function is left
+            drawn_assignments[f"Função Extra {i+1} (Nenhuma Função Disponível)"] = "(Vazio)"
             continue # Move to next draw, but it will also be empty if no associates
 
         chosen_conceptual_role = conceptual_role_pool_for_draw.pop(0) # Take one function from the shuffled list
@@ -507,19 +569,19 @@ def draw_activated_functions(associates, exclusions, increased_probability, acti
         )
 
         if chosen_associate:
-            drawn_assignments[f"{chosen_conceptual_role}"] = chosen_associate # Store only the function name as key for simplicity
+            drawn_assignments[chosen_conceptual_role] = chosen_associate # Store only the function name as key for simplicity
             available_associates_for_draw.remove(chosen_associate)
         else:
-            drawn_assignments[f"{chosen_conceptual_role}"] = "(Vazio/Nenhum Associado Elegível)"
+            drawn_assignments[chosen_conceptual_role] = "(Vazio/Nenhum Associado Elegível)"
 
         # If no more associates available, fill remaining draw slots as empty
         if not available_associates_for_draw and i < num_draws - 1:
             for j in range(i + 1, num_draws):
                 if conceptual_role_pool_for_draw:
                     remaining_role = conceptual_role_pool_for_draw.pop(0)
-                    drawn_assignments[f"{remaining_role}"] = "(Vazio)"
+                    drawn_assignments[remaining_role] = "(Vazio)"
                 else:
-                    drawn_assignments[f"Sorteio Posição {j+1} (Nenhuma Função Disponível)"] = "(Vazio)"
+                    drawn_assignments[f"Função Extra {j+1} (Nenhuma Função Disponível)"] = "(Vazio)"
             break # Exit the loop as no more associates to assign
             
     return drawn_assignments
@@ -567,13 +629,14 @@ def generate_excel_in_memory(allocated_schedule, drawn_assignments, all_unalloca
     # Limpar funções ativas sorteadas - ATUALIZADO para Coluna G, linha 2
     funcoes_ativas_col = 'G' 
     funcoes_ativas_start_row = 2 
-    for row_num in range(funcoes_ativas_start_row, funcoes_ativas_start_row + len(ACTIVATED_FUNCTIONS) + 5): # Limpa um pouco além do esperado
+    # Limpa uma quantidade suficiente de linhas na coluna G para os sorteados
+    for row_num in range(funcoes_ativas_start_row, funcoes_ativas_start_row + len(ACTIVATED_FUNCTIONS) + 5): 
         sheet[f'{funcoes_ativas_col}{row_num}'] = ""
     
     # Limpar não alocados - ATUALIZADO para Coluna F, linha 2
     unallocated_text_col = 'F'
     unallocated_text_start_row = 2 
-    for row_num in range(unallocated_text_start_row, unallocated_text_start_row + 30): 
+    for row_num in range(unallocated_text_start_row, unallocated_text_start_row + 30): # Limpa um número razoável de linhas
         sheet[f'{unallocated_text_col}{row_num}'] = ""
     
     # Escrever alocações de ceia
@@ -586,47 +649,20 @@ def generate_excel_in_memory(allocated_schedule, drawn_assignments, all_unalloca
     # Escrever atribuições do sorteio - ATUALIZADO
     current_active_row = funcoes_ativas_start_row # Começa na linha 2 na coluna G
     
-    # Sort the drawn_assignments by the position name from ACTIVATED_FUNCTIONS list order
-    # This ensures a consistent order in the Excel file
-    sorted_drawn_assignments_for_excel = []
+    # Prepare items to write, ensuring functions from ACTIVATED_FUNCTIONS appear first
+    sorted_drawn_output = []
     for func_name in ACTIVATED_FUNCTIONS:
         if func_name in drawn_assignments:
-            sorted_drawn_assignments_for_excel.append((func_name, drawn_assignments[func_name]))
-        # Handle cases where a function was requested but not assigned (e.g., "(Vazio)")
-        elif f"Sorteio Posição {ACTIVATED_FUNCTIONS.index(func_name) + 1} ({func_name})" in drawn_assignments:
-             sorted_drawn_assignments_for_excel.append((func_name, drawn_assignments[f"Sorteio Posição {ACTIVATED_FUNCTIONS.index(func_name) + 1} ({func_name})"]))
-        # Also need to capture 'Nenhuma Função Disponível' if it was added
-        # This part might need further refinement based on exact keys in drawn_assignments if they are not just function names
-        # For now, let's assume drawn_assignments has function names as keys.
-
-    # Re-iterate on drawn_assignments to ensure all are caught, especially if keys are like "Sorteio Posição X (...)"
-    # We want "Função: Associado" format.
-    final_drawn_output = {}
+            sorted_drawn_output.append((func_name, drawn_assignments[func_name]))
+    
+    # Add any other keys from drawn_assignments that might not be in ACTIVATED_FUNCTIONS (e.g., "(Nenhuma Função Disponível)")
     for key, value in drawn_assignments.items():
-        if key in ACTIVATED_FUNCTIONS: # If key is directly the function name
-            final_drawn_output[key] = value
-        elif "Sorteio Posição" in key and "(" in key and ")" in key: # If key is "Sorteio Posição X (Function Name)"
-            func_name_in_key = key.split('(')[1][:-1]
-            final_drawn_output[func_name_in_key] = value
-        else: # Fallback for unexpected keys
-            final_drawn_output[key] = value
+        if not any(key == item[0] for item in sorted_drawn_output): # If this key wasn't added from ACTIVATED_FUNCTIONS
+            sorted_drawn_output.append((key, value))
 
-    # Now sort this final_drawn_output based on ACTIVATED_FUNCTIONS order
-    sorted_drawn_assignments_for_excel = []
-    for func_name in ACTIVATED_FUNCTIONS:
-        if func_name in final_drawn_output:
-            sorted_drawn_assignments_for_excel.append((func_name, final_drawn_output[func_name]))
-
-    # Add any remaining keys that might not be in ACTIVATED_FUNCTIONS (e.g., "Sorteio Posição X (Nenhuma Função Disponível)")
-    for key, value in final_drawn_output.items():
-        if not any(key == func[0] for func in sorted_drawn_assignments_for_excel): # If not already added
-            sorted_drawn_assignments_for_excel.append((key, value))
-
-    for func_name, associate in sorted_drawn_assignments_for_excel:
-        if associate.startswith('('): # Ex: "(Vazio/Nenhum Associado Elegível)"
-            sheet[f'{funcoes_ativas_col}{current_active_row}'] = f"{func_name}: {associate}"
-        else:
-            sheet[f'{funcoes_ativas_col}{current_active_row}'] = f"{func_name}: {associate}"
+    for func_name, associate in sorted_drawn_output:
+        # Format: "Função: Associado"
+        sheet[f'{funcoes_ativas_col}{current_active_row}'] = f"{func_name}: {associate}"
         current_active_row += 1
 
     # Escrever associados não alocados/sorteados - ATUALIZADO
@@ -642,10 +678,10 @@ def generate_excel_in_memory(allocated_schedule, drawn_assignments, all_unalloca
     return buffer.getvalue() # Retorna os bytes do arquivo Excel
 
 # --- Streamlit App Interface (Mantido como estava) ---
-st.set_page_config(page_title="Alocador de Escalas", page_icon="📊", layout="centered")
+st.set_page_config(page_title="Alocador de Escalas - Sorteio Prime", page_icon="📊", layout="centered")
 
-st.title("📊 Alocador Automático de Escalas e Sorteios")
-st.markdown("Bem-vindo ao seu assistente de alocação de equipes!")
+st.title("📊 Alocador Automático de Escalas e Sorteios (Sorteio Prime)")
+st.markdown("Bem-vindo ao seu assistente de alocação de equipes para o **Prime Day**!")
 st.markdown("---")
 
 # --- 1. Carregar Associados ---
@@ -766,8 +802,16 @@ else:
 
                 st.subheader("✅ Atribuições do Sorteio Finalizadas:")
                 drawn_data = []
-                for pos, assoc in sorted(drawn_assignments.items()): # Agora 'pos' será o nome da função
-                    drawn_data.append({"Posição Sorteada": pos, "Associado": assoc})
+                # Display in the order of ACTIVATED_FUNCTIONS
+                for func_name in ACTIVATED_FUNCTIONS:
+                    if func_name in drawn_assignments:
+                        drawn_data.append({"Posição Sorteada": func_name, "Associado": drawn_assignments[func_name]})
+                # Add any "Nenhuma Função Disponível" entries
+                for key, value in drawn_assignments.items():
+                    if key not in ACTIVATED_FUNCTIONS:
+                         drawn_data.append({"Posição Sorteada": key, "Associado": value})
+
+
                 st.dataframe(pd.DataFrame(drawn_data))
                 st.success("Sorteio Concluído!")
         elif activate_extras_option == "Não":
@@ -796,7 +840,7 @@ else:
                 if not assoc.startswith('('):
                     final_allocated_associates_set.add(assoc)
             for assoc in drawn_assignments.values():
-                if not assoc.startswith('('):
+                if not assoc.startswith('('): # Only add if not a "Vazio" entry
                     final_allocated_associates_set.add(assoc)
             
             all_unallocated_associates_overall = list(initial_associates_set - final_allocated_associates_set)
@@ -811,9 +855,9 @@ else:
                 )
                 
                 st.download_button(
-                    label="Clique para Baixar 'escala_da_equipe.xlsx'",
+                    label="Clique para Baixar 'escala_da_equipe_prime.xlsx'", # Renomeado para Prime
                     data=excel_bytes,
-                    file_name="escala_da_equipe.xlsx",
+                    file_name="escala_da_equipe_prime.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 st.success("Arquivo Excel gerado com sucesso!")
@@ -833,4 +877,4 @@ st.markdown("---")
 
 # --- Rodapé ---
 st.markdown("Esta aplicação foi desenvolvida por **Rinalanc/Github**.")
-st.markdown("Data: 30/06/2025")
+st.markdown("Data: 30/06/2025") # Data atualizada
