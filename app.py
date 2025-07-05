@@ -1,12 +1,3 @@
-# app.py - Versão: Sorteio Prime (Configurações específicas para a temporada de Prime Day)
-# Esta versão inclui:
-# - Duas vagas para "Azul".
-# - Múltiplas vagas para "Recirculação", "Auditoria", "Shuttle", "Carregamento", "GAP".
-# - Funções extras ativadas ("Hatae", "Triagem Hatae", "Curva", "Bipando Hatae") como parte do sorteio geral.
-# - Regras de exclusão e probabilidade expandidas para incluir as novas funções extras e grupos conceituais.
-# --- TESTE: POSIÇÕES DE CEIA MOVIDAS PARA FUNÇÕES EXTRAS ---
-# --- NOVO: NOME DO ARQUIVO EXCEL DINÂMICO ---
-
 import streamlit as st
 import random
 import collections
@@ -16,49 +7,22 @@ import io # Para manipular arquivos em memória
 import pandas as pd # Para exibir DataFrames no Streamlit
 
 # --- Configuration Data ---
-# Core positions for Before/After Dinner shifts (fixed positions in B/C columns)
-# ATUALIZADO: Apenas as vagas "1" e "Pesado 1/2" permanecem na Ceia
+# Core positions for Before/After Dinner
 CORE_POSITIONS = [
-    "Recirculação 1",
-    "Pesado 1", "Pesado 2",
-    "Auditoria 1",
-    "Azul 1",
-    "Shuttle 1",
-    "Carregamento 1",
-    "GAP 1"
-]
-
-# Activated functions for drawing (sporadic, allocated in G column) - ATUALIZADO
-# Inclui as funções extras originais E as posições movidas da CORE_POSITIONS
-ACTIVATED_FUNCTIONS = [
-    "Hatae - tirar pacote", "Triagem 1", "Triagem 2", "Triagem 3", "Triagem 4",
-    "Bipando Hatae 1", "Bipando Hatae 2",
-    "Curva - Tirar Pacote",
-    "Triagem Hatae 1", "Triagem Hatae 2", "Triagem Hatae 3", "Triagem Hatae 4",
-    "Curva 2 - Tirar Pacote",
-    # Novas funções extras (movidas de CORE_POSITIONS)
-    "Recirculação 2", "Recirculação 3",
-    "Auditoria 2", "Auditoria 3",
-    "Azul 2",
-    "Shuttle 2", "Shuttle 3",
-    "Carregamento 2",
-    "GAP 2"
+    "Recirculação", "Pesado", "Auditoria 1", "Auditoria 2", "Azul",
+    "Shuttle 1", "Shuttle 2", "Shuttle 3", "Shuttle 4", "GAP",
+    "Carregamento"
 ]
 
 # Mapeamento de posições conceituais para aplicar a regra "não pode estar em conceituais iguais"
-# ATUALIZADO para refletir a nova divisão de CORE e ACTIVATED_FUNCTIONS
 CONCEPTUAL_POSITION_GROUPS = {
-    "Shuttle": ["Shuttle 1", "Shuttle 2", "Shuttle 3"], # Agora engloba ambas as categorias
-    "Auditoria": ["Auditoria 1", "Auditoria 2", "Auditoria 3"], # Engloba ambas as categorias
-    "Recirculação": ["Recirculação 1", "Recirculação 2", "Recirculação 3"], # Engloba ambas as categorias
-    "Pesado": ["Pesado 1", "Pesado 2"],
-    "Azul": ["Azul 1", "Azul 2"], # Engloba ambas as categorias
-    "GAP": ["GAP 1", "GAP 2"], # Engloba ambas as categorias
-    "Carregamento": ["Carregamento 1", "Carregamento 2"], # Engloba ambas as categorias
-    # Novas entradas para as funções ativadas
-    "Triagem": ["Triagem 1", "Triagem 2", "Triagem 3", "Triagem 4", "Triagem Hatae 1", "Triagem Hatae 2", "Triagem Hatae 3", "Triagem Hatae 4"],
-    "Hatae": ["Hatae - tirar pacote", "Bipando Hatae 1", "Bipando Hatae 2"],
-    "Curva": ["Curva - Tirar Pacote", "Curva 2 - Tirar Pacote"]
+    "Shuttle": ["Shuttle 1", "Shuttle 2", "Shuttle 3", "Shuttle 4"],
+    "Auditoria": ["Auditoria 1", "Auditoria 2"],
+    "Recirculação": ["Recirculação"],
+    "Pesado": ["Pesado"],
+    "Azul": ["Azul"],
+    "GAP": ["GAP"],
+    "Carregamento": ["Carregamento"]
 }
 
 _INVERTED_CONCEPTUAL_GROUPS = {}
@@ -66,111 +30,104 @@ for group, positions in CONCEPTUAL_POSITION_GROUPS.items():
     for pos in positions:
         _INVERTED_CONCEPTUAL_GROUPS[pos] = group
 
-ALLOWED_IN_AZUL = ["rinalanc", "leonarsd", "horaroge", "silvnpau", "sousthib"]
+ACTIVATED_FUNCTIONS = [
+    "Hatae - tirar pacote", "Triagem 1", "Triagem 2", "Triagem 3",
+    "Triagem 4", "Bipando Hatae", "Curva - Tirar Hatae"
+]
 
-# As regras de EXCLUSIONS e INCREASED_PROBABILITY agora devem considerar tanto a posição exata
-# quanto o grupo conceitual da posição, conforme definido em CONCEPTUAL_POSITION_GROUPS.
-# A lógica de choose_associate_with_rules será ajustada para isso.
+ALLOWED_IN_AZUL = ["rinalanc", "leonarsd", "horaroge", "silvnpau", "sousthib"]
 
 EXCLUSIONS = {
     "rinalanc": {
-        "GeneralCeia": ["Shuttle 1", "Recirculação 1", "Pesado 1", "Pesado 2", "GAP 1"], # Apenas as posições remanescentes na Ceia
-        "GeneralDraw": ["Shuttle 1", "Shuttle 2", "Shuttle 3", "Recirculação 1", "Recirculação 2", "Recirculação 3",
-                        "Pesado 1", "Pesado 2", "GAP 1", "GAP 2", # Posições de Ceia e suas "partes extras"
-                        "Hatae - tirar pacote", "Triagem 1", "Triagem 2", "Triagem 3", "Triagem 4", # Funções Ativadas
-                        "Bipando Hatae 1", "Bipando Hatae 2", "Curva - Tirar Pacote",
-                        "Triagem Hatae 1", "Triagem Hatae 2", "Triagem Hatae 3", "Triagem Hatae 4", "Curva 2 - Tirar Pacote",
-                        "Auditoria 2", "Auditoria 3", "Azul 2", "Carregamento 2"] # Posições que agora são sorteadas
+        "GeneralCeia": ["Shuttle 1", "Shuttle 2", "Shuttle 3", "Shuttle 4", "Recirculação", "Pesado", "GAP"],
+        "GeneralDraw": ["Shuttle 1", "Shuttle 2", "Shuttle 3", "Shuttle 4",
+                        "Recirculação", "Pesado", "GAP", "Hatae - tirar pacote", "Triagem 1", "Triagem 2", "Triagem 3", "Triagem 4",
+                        "Bipando Hatae", "Curva - Tirar Hatae"]
     },
     "leonarsd": {
-        "GeneralCeia": ["Shuttle 1", "Recirculação 1", "Pesado 1", "Pesado 2", "GAP 1"],
-        "GeneralDraw": ["Shuttle 1", "Shuttle 2", "Shuttle 3", "Recirculação 1", "Recirculação 2", "Recirculação 3",
-                        "Pesado 1", "Pesado 2", "GAP 1", "GAP 2",
-                        "Hatae - tirar pacote", "Triagem 1", "Triagem 2", "Triagem 3", "Triagem 4",
-                        "Bipando Hatae 1", "Bipando Hatae 2", "Curva - Tirar Pacote",
-                        "Triagem Hatae 1", "Triagem Hatae 2", "Triagem Hatae 3", "Triagem Hatae 4", "Curva 2 - Tirar Pacote",
-                        "Auditoria 2", "Auditoria 3", "Azul 2", "Carregamento 2"]
+        "GeneralCeia": ["Shuttle 1", "Shuttle 2", "Shuttle 3", "Shuttle 4", "Recirculação", "Pesado", "GAP"],
+        "GeneralDraw": ["Shuttle 1", "Shuttle 2", "Shuttle 3", "Shuttle 4",
+                        "Recirculação", "Pesado", "GAP", "Hatae - tirar pacote", "Triagem 1", "Triagem 2", "Triagem 3", "Triagem 4",
+                        "Bipando Hatae", "Curva - Tirar Hatae"]
     },
     "horaroge": {
-        "GeneralCeia": ["Pesado 1", "Pesado 2"],
-        "GeneralDraw": ["Pesado 1", "Pesado 2"]
+        "GeneralCeia": ["Pesado"],
+        "GeneralDraw": ["Pesado"]
     },
     "silvnpau": {
-        "GeneralCeia": ["Carregamento 1"], # Exclusão na ceia
-        "GeneralDraw": ["Carregamento 1", "Carregamento 2"] # Exclusão no sorteio
+        # Sem exclusões específicas.
     },
     "sousthib": {
-        "GeneralCeia": ["Carregamento 1", "Azul 1"], # Exclusão na ceia
-        "GeneralDraw": ["Carregamento 1", "Carregamento 2", "Azul 1", "Azul 2"] # Exclusão no sorteio
+        # Sem exclusões específicas.
     },
     "ferrlucq": {
-        "GeneralCeia": ["Azul 1", "Carregamento 1"],
-        "GeneralDraw": ["Azul 1", "Azul 2", "Carregamento 1", "Carregamento 2"]
+        "GeneralCeia": ["Azul", "Carregamento"],
+        "GeneralDraw": ["Azul", "Carregamento"]
     },
     "ksilsilv": {
-        "GeneralCeia": ["Azul 1", "Carregamento 1"],
-        "GeneralDraw": ["Azul 1", "Azul 2", "Carregamento 1", "Carregamento 2"]
+        "GeneralCeia": ["Azul", "Carregamento"],
+        "GeneralDraw": ["Azul", "Carregamento"]
     },
     "wessouzf": {
-        "GeneralCeia": ["Azul 1", "Carregamento 1"],
-        "GeneralDraw": ["Azul 1", "Azul 2", "Carregamento 1", "Carregamento 2"]
+        "GeneralCeia": ["Azul", "Carregamento"],
+        "GeneralDraw": ["Azul", "Carregamento"]
     },
     "piluanaq": {
-        "GeneralCeia": ["Carregamento 1", "Azul 1"], # Exclusão na ceia
-        "GeneralDraw": ["Carregamento 1", "Carregamento 2", "Azul 1", "Azul 2"] # Exclusão no sorteio
+        # Sem exclusões específicas.
     },
-    "pretojon": {
-        "GeneralDraw": { "Azul 1": 3, "Azul 2": 3, "Auditoria 1": 2, "Auditoria 2": 2, "Auditoria 3": 2, "Carregamento 1": 2, "Carregamento 2": 2 }
+    "pretojon": { # Adicionado para garantir que esteja completo
+        "GeneralCeia": [], # Adicione exclusões se houver
+        "GeneralDraw": []  # Adicione exclusões se houver
     },
-    "EVAWWELI": {
+    "EVAWWELI": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "rabsouza": {
+    "rabsouza": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "lucenama": {
+    "lucenama": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "pedrour": {
+    "pedrour": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "ferrlnat": {
+    "ferrlnat": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "doubsant": {
+    "doubsant": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "vinichda": {
+    "vinichda": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "hjosesil": {
+    "hjosesil": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "tmarcoso": {
+    "tmarcoso": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "luizsanp": {
+    "luizsanp": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "nasckluc": {
+    "nasckluc": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "salucasi": {
+    "salucasi": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     },
-    "mlucneri": {
+    "mlucneri": { # Adicionado
         "GeneralCeia": [],
         "GeneralDraw": []
     }
@@ -178,157 +135,59 @@ EXCLUSIONS = {
 
 INCREASED_PROBABILITY = {
     "rinalanc": {
-        "GeneralCeia": { "Azul 1": 4, "Auditoria 1": 3, "Carregamento 1": 3 }, # Apenas posições remanescentes na Ceia
-        "GeneralDraw": {
-            "Azul 1": 4, "Azul 2": 4, "Auditoria 1": 3, "Auditoria 2": 3, "Auditoria 3": 3, "Carregamento 1": 4, "Carregamento 2": 4,
-            "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1,
-            "Bipando Hatae 1": 1, "Bipando Hatae 2": 1, "Curva - Tirar Pacote": 1,
-            "Triagem Hatae 1": 1, "Triagem Hatae 2": 1, "Triagem Hatae 3": 1, "Triagem Hatae 4": 1, "Curva 2 - Tirar Pacote": 1,
-            # Probabilidades para as posições movidas
-            "Recirculação 2": 1, "Recirculação 3": 1, "Auditoria 2": 1, "Auditoria 3": 1,
-            "Shuttle 2": 1, "Shuttle 3": 1, "GAP 2": 1
-        }
+        "GeneralCeia": { "Azul": 4, "Auditoria 1": 3, "Auditoria 2": 3, "Carregamento": 3 },
+        "GeneralDraw": { "Azul": 4, "Auditoria 1": 3, "Auditoria 2": 3, "Carregamento": 4 }
     },
     "leonarsd": {
-        "GeneralCeia": { "Azul 1": 4, "Auditoria 1": 3, "Carregamento 1": 3 },
-        "GeneralDraw": {
-            "Azul 1": 4, "Azul 2": 4, "Auditoria 1": 3, "Auditoria 2": 3, "Auditoria 3": 3, "Carregamento 1": 4, "Carregamento 2": 4,
-            "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1,
-            "Bipando Hatae 1": 1, "Bipando Hatae 2": 1, "Curva - Tirar Pacote": 1,
-            "Triagem Hatae 1": 1, "Triagem Hatae 2": 1, "Triagem Hatae 3": 1, "Triagem Hatae 4": 1, "Curva 2 - Tirar Pacote": 1,
-            "Recirculação 2": 1, "Recirculação 3": 1, "Auditoria 2": 1, "Auditoria 3": 1,
-            "Shuttle 2": 1, "Shuttle 3": 1, "GAP 2": 1
-        }
+        "GeneralCeia": { "Azul": 4, "Auditoria 1": 3, "Auditoria 2": 3, "Carregamento": 3 },
+        "GeneralDraw": { "Azul": 4, "Auditoria 1": 3, "Auditoria 2": 3, "Carregamento": 4 }
     },
     "horaroge": {
-        "GeneralCeia": { "Azul 1": 1, "Carregamento 1": 2, "Auditoria 1": 2, "Recirculação 1": 1, "GAP 1": 1, "Shuttle 1": 1 },
-        "GeneralDraw": {
-            "Azul 1": 4, "Azul 2": 4, "Carregamento 1": 2, "Carregamento 2": 2,
-            "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1,
-            "Bipando Hatae 1": 1, "Bipando Hatae 2": 1, "Curva - Tirar Pacote": 1,
-            "Triagem Hatae 1": 1, "Triagem Hatae 2": 1, "Triagem Hatae 3": 1, "Triagem Hatae 4": 1, "Curva 2 - Tirar Pacote": 1,
-            "Recirculação 2": 1, "Recirculação 3": 1, "Auditoria 2": 1, "Auditoria 3": 1,
-            "Shuttle 2": 1, "Shuttle 3": 1, "GAP 2": 1
-        }
+        "GeneralCeia": { "Azul": 1, "Carregamento": 2, "Auditoria 1": 2, "Auditoria 2": 2, "Recirculação": 1, "GAP": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Shuttle 4": 1 },
+        "GeneralDraw": { "Azul": 4, "Carregamento": 2, "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1, "Bipando Hatae": 1, "Curva - Tirar Hatae": 1 }
     },
     "silvnpau": {
-        "GeneralCeia": { "Azul 1": 1, "Recirculação 1": 1, "Pesado 1": 1, "Pesado 2": 1, "Auditoria 1": 1, "Shuttle 1": 1, "GAP 1": 1 },
-        "GeneralDraw": {
-            "Azul 1": 4, "Azul 2": 4, "Carregamento 1": 2, "Carregamento 2": 2,
-            "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1,
-            "Bipando Hatae 1": 1, "Bipando Hatae 2": 1, "Curva - Tirar Pacote": 1,
-            "Triagem Hatae 1": 1, "Triagem Hatae 2": 1, "Triagem Hatae 3": 1, "Triagem Hatae 4": 1, "Curva 2 - Tirar Pacote": 1,
-            "Recirculação 2": 1, "Recirculação 3": 1, "Auditoria 2": 1, "Auditoria 3": 1,
-            "Shuttle 2": 1, "Shuttle 3": 1, "GAP 2": 1
-        }
+        "GeneralCeia": { "Azul": 1, "Carregamento": 2, "Recirculação": 1, "Pesado": 1, "Auditoria 1": 1, "Auditoria 2": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Shuttle 4": 1, "GAP": 1 },
+        "GeneralDraw": { "Azul": 4, "Carregamento": 2, "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1, "Bipando Hatae": 1, "Curva - Tirar Hatae": 1 }
     },
     "sousthib": {
-        "GeneralCeia": { "Pesado 1": 2, "Pesado 2": 2, "Auditoria 1": 1, "Recirculação 1": 1, "GAP 1": 1, "Shuttle 1": 1 },
-        "GeneralDraw": {
-            "Azul 1": 4, "Azul 2": 4, "Carregamento 1": 2, "Carregamento 2": 2, "Pesado 1": 2, "Pesado 2": 2,
-            "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1,
-            "Bipando Hatae 1": 1, "Bipando Hatae 2": 1, "Curva - Tirar Pacote": 1,
-            "Triagem Hatae 1": 1, "Triagem Hatae 2": 1, "Triagem Hatae 3": 1, "Triagem Hatae 4": 1, "Curva 2 - Tirar Pacote": 1,
-            "Recirculação 2": 1, "Recirculação 3": 1, "Auditoria 2": 1, "Auditoria 3": 1,
-            "Shuttle 2": 1, "Shuttle 3": 1, "GAP 2": 1
-        }
+        "GeneralCeia": { "Azul": 1, "Carregamento": 2, "Pesado": 2, "Auditoria 1": 1, "Auditoria 2": 1, "Recirculação": 1, "GAP": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Shuttle 4": 1 },
+        "GeneralDraw": { "Azul": 4, "Carregamento": 2, "Pesado": 2, "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1, "Bipando Hatae": 1, "Curva - Tirar Hatae": 1 }
     },
     "ferrlucq": {
         "GeneralCeia": {
-            "GAP 1": 2, "Shuttle 1": 2, "Recirculação 1": 2, "Pesado 1": 2, "Pesado 2": 2
+            "GAP": 2, "Shuttle 1": 2, "Shuttle 2": 2, "Shuttle 3": 2, "Shuttle 4": 2,
+            "Recirculação": 2, "Pesado": 2
         },
         "GeneralDraw": {
-            "Pesado 1": 2, "Pesado 2": 2, "GAP 1": 2, "GAP 2": 2, "Recirculação 1": 2, "Recirculação 2": 2, "Recirculação 3": 2,
+            "Pesado": 2, "GAP": 2, "Recirculação": 2,
             "Hatae - tirar pacote": 2, "Triagem 1": 2, "Triagem 2": 2,
-            "Triagem 3": 2, "Triagem 4": 2, "Bipando Hatae 1": 2, "Bipando Hatae 2": 2, "Curva - Tirar Pacote": 2,
-            "Triagem Hatae 1": 2, "Triagem Hatae 2": 2, "Triagem Hatae 3": 2, "Triagem Hatae 4": 2, "Curva 2 - Tirar Pacote": 2,
-            "Shuttle 1": 2, "Shuttle 2": 2, "Shuttle 3": 2, "Auditoria 1": 2, "Auditoria 2": 2, "Auditoria 3": 2
+            "Triagem 3": 2, "Triagem 4": 2, "Bipando Hatae": 2, "Curva - Tirar Hatae": 2,
+            "Shuttle 1": 2, "Shuttle 2": 2, "Shuttle 3": 2, "Shuttle 4": 2
         }
     },
     "ksilsilv": {
         "GeneralCeia": {
-            "GAP 1": 2, "Shuttle 1": 2, "Recirculação 1": 2, "Pesado 1": 2, "Pesado 2": 2
+            "GAP": 2, "Shuttle 1": 2, "Shuttle 2": 2, "Shuttle 3": 2, "Shuttle 4": 2,
+            "Recirculação": 2, "Pesado": 2
         },
         "GeneralDraw": {
-            "Pesado 1": 2, "Pesado 2": 2, "GAP 1": 2, "GAP 2": 2, "Recirculação 1": 2, "Recirculação 2": 2, "Recirculação 3": 2,
+            "Pesado": 2, "GAP": 2, "Recirculação": 2,
             "Hatae - tirar pacote": 2, "Triagem 1": 2, "Triagem 2": 2,
-            "Triagem 3": 2, "Triagem 4": 2, "Bipando Hatae 1": 2, "Bipando Hatae 2": 2, "Curva - Tirar Pacote": 2,
-            "Triagem Hatae 1": 2, "Triagem Hatae 2": 2, "Triagem Hatae 3": 2, "Triagem Hatae 4": 2, "Curva 2 - Tirar Pacote": 2,
-            "Shuttle 1": 2, "Shuttle 2": 2, "Shuttle 3": 2, "Auditoria 1": 2, "Auditoria 2": 2, "Auditoria 3": 2
+            "Triagem 3": 2, "Triagem 4": 2, "Bipando Hatae": 2, "Curva - Tirar Hatae": 2,
+            "Shuttle 1": 2, "Shuttle 2": 2, "Shuttle 3": 2, "Shuttle 4": 2
         }
     },
     "pretojon": {
-        "GeneralDraw": { "Azul 1": 3, "Azul 2": 3, "Auditoria 1": 2, "Auditoria 2": 2, "Auditoria 3": 2, "Carregamento 1": 2, "Carregamento 2": 2 }
+        "GeneralDraw": { "Azul": 3, "Auditoria 1": 2, "Auditoria 2": 2, "Carregamento": 2 }
     },
     "wessouzf": {
-        "GeneralCeia": { "Recirculação 1": 2, "GAP 1": 3, "Auditoria 1": 1, "Shuttle 1": 1, "Pesado 1": 1, "Pesado 2": 1 },
-        "GeneralDraw": {
-            "Recirculação 1": 2, "Recirculação 2": 2, "Recirculação 3": 2, "GAP 1": 3, "GAP 2": 3,
-            "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1,
-            "Bipando Hatae 1": 1, "Bipando Hatae 2": 1, "Curva - Tirar Pacote": 1,
-            "Triagem Hatae 1": 1, "Triagem Hatae 2": 1, "Triagem Hatae 3": 1, "Triagem Hatae 4": 1, "Curva 2 - Tirar Pacote": 1,
-            "Auditoria 1": 1, "Auditoria 2": 1, "Auditoria 3": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Pesado 1": 1, "Pesado 2": 1
-        }
+        "GeneralCeia": { "Recirculação": 2, "GAP": 3, "Auditoria 1": 1, "Auditoria 2": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Shuttle 4": 1, "Pesado": 1 },
+        "GeneralDraw": { "Recirculação": 2, "GAP": 3, "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1, "Bipando Hatae": 1, "Curva - Tirar Hatae": 1, "Auditoria 1": 1, "Auditoria 2": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Shuttle 4": 1, "Pesado": 1 }
     },
     "piluanaq": {
-        "GeneralCeia": { "Recirculação 1": 2, "Auditoria 1": 2, "GAP 1": 2, "Pesado 1": 1, "Pesado 2": 1, "Shuttle 1": 1 }, # Apenas posições remanescentes na Ceia
-        "GeneralDraw": {
-            "Bipando Hatae 1": 2, "Bipando Hatae 2": 2, "Recirculação 1": 2, "Recirculação 2": 2, "Recirculação 3": 2, "Auditoria 1": 2, "Auditoria 2": 2, "Auditoria 3": 2, "GAP 1": 2, "GAP 2": 2, "Pesado 1": 1, "Pesado 2": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Carregamento 1": 1, "Carregamento 2": 1,
-            "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1, "Curva - Tirar Pacote": 1,
-            "Triagem Hatae 1": 1, "Triagem Hatae 2": 1, "Triagem Hatae 3": 1, "Triagem Hatae 4": 1, "Curva 2 - Tirar Pacote": 1
-        }
-    },
-    "EVAWWELI": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "rabsouza": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "lucenama": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "pedrour": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "ferrlnat": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "doubsant": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "vinichda": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "hjosesil": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "tmarcoso": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "luizsanp": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "nasckluc": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "salucasi": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
-    },
-    "mlucneri": {
-        "GeneralCeia": [],
-        "GeneralDraw": []
+        "GeneralCeia": { "Bipando Hatae": 2, "Recirculação": 2, "Auditoria 1": 2, "Auditoria 2": 2, "GAP": 2, "Pesado": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Shuttle 4": 1, "Carregamento": 1 },
+        "GeneralDraw": { "Bipando Hatae": 2, "Recirculação": 2, "Auditoria 1": 2, "Auditoria 2": 2, "GAP": 2, "Pesado": 1, "Shuttle 1": 1, "Shuttle 2": 1, "Shuttle 3": 1, "Shuttle 4": 1, "Carregamento": 1, "Hatae - tirar pacote": 1, "Triagem 1": 1, "Triagem 2": 1, "Triagem 3": 1, "Triagem 4": 1, "Curva - Tirar Hatae": 1 }
     }
 }
 
@@ -344,49 +203,35 @@ def choose_associate_with_rules(available_associates_in_this_round, position_nam
         current_weight = 1
         is_eligible = True # Assume eligible until an exclusion is found
 
-        # Get conceptual group for the position, if any
-        position_conceptual_group = _INVERTED_CONCEPTUAL_GROUPS.get(position_name, None)
-
         # 1. IMMEDIATE EXCLUSIONS (HIGHEST PRIORITY)
 
         # Check general exclusion for Azul if associate is not in ALLOWED_IN_AZUL
-        if position_name.startswith("Azul") and assoc not in ALLOWED_IN_AZUL:
+        if position_name == "Azul" and assoc not in ALLOWED_IN_AZUL:
             is_eligible = False
         
         # Check explicit exclusions from the EXCLUSIONS dictionary
         if is_eligible and assoc in exclusions:
             assoc_exclusions = exclusions[assoc]
             
-            # Check if current position_name is in the specific time_slot_context's exclusions
+            # Check if current position_name is in the specific time_slot_context's exclusions (e.g., "AntesCeia" if that's a direct key)
             if time_slot_context in assoc_exclusions and position_name in assoc_exclusions[time_slot_context]:
                 is_eligible = False
-            # Check if conceptual group is in the specific time_slot_context's exclusions
-            elif is_eligible and position_conceptual_group and time_slot_context in assoc_exclusions:
-                if any(p in assoc_exclusions[time_slot_context] for p in CONCEPTUAL_POSITION_GROUPS.get(position_conceptual_group, [])):
-                    is_eligible = False
-            
             # If not excluded by specific context, check if it's in the general context (e.g., GeneralCeia/GeneralDraw)
-            if is_eligible: # Only check if not already excluded by a more specific rule
+            elif is_eligible: # Only check if not already excluded by a more specific rule
                 # Apply GeneralCeia rules for AntesCeia and DepoisCeia contexts
                 if "GeneralCeia" in assoc_exclusions and \
-                   (time_slot_context.startswith("AntesCeia") or time_slot_context.startswith("DepoisCeia")):
-                     if position_name in assoc_exclusions["GeneralCeia"]:
-                         is_eligible = False
-                     elif position_conceptual_group and any(p in assoc_exclusions["GeneralCeia"] for p in CONCEPTUAL_POSITION_GROUPS.get(position_conceptual_group, [])):
-                         is_eligible = False
+                   (time_slot_context.startswith("AntesCeia") or time_slot_context.startswith("DepoisCeia")) and \
+                   position_name in assoc_exclusions["GeneralCeia"]:
+                     is_eligible = False
                 # Apply GeneralDraw rules for GeneralDraw context
-                elif "GeneralDraw" in assoc_exclusions and time_slot_context == "GeneralDraw":
-                     if position_name in assoc_exclusions["GeneralDraw"]:
-                         is_eligible = False
-                     elif position_conceptual_group and any(p in assoc_exclusions["GeneralDraw"] for p in CONCEPTUAL_POSITION_GROUPS.get(position_conceptual_group, [])):
-                         is_eligible = False
+                elif "GeneralDraw" in assoc_exclusions and \
+                     time_slot_context == "GeneralDraw" and \
+                     position_name in assoc_exclusions["GeneralDraw"]:
+                     is_eligible = False
 
         # Apply additional dynamic exclusions (e.g., based on prior allocations in the *same* shift phase)
         if is_eligible and additional_exclusions_for_assoc and assoc in additional_exclusions_for_assoc:
             if position_name in additional_exclusions_for_assoc[assoc]:
-                is_eligible = False
-            # Check for conceptual group exclusion in dynamic exclusions too
-            elif position_conceptual_group and any(p in additional_exclusions_for_assoc[assoc] for p in CONCEPTUAL_POSITION_GROUPS.get(position_conceptual_group, [])):
                 is_eligible = False
 
         # If after ALL exclusions, the associate is still eligible, then apply weights
@@ -395,45 +240,17 @@ def choose_associate_with_rules(available_associates_in_this_round, position_nam
             if assoc in probabilities:
                 assoc_probabilities = probabilities[assoc]
                 # Check specific time slot probability
-                if time_slot_context in assoc_probabilities:
-                    if position_name in assoc_probabilities[time_slot_context]:
-                        current_weight *= assoc_probabilities[time_slot_context][position_name]
-                    # Check conceptual group probability for the specific time slot
-                    elif position_conceptual_group:
-                        # Find the highest weight for any position in the group
-                        group_weights = [
-                            assoc_probabilities[time_slot_context][p]
-                            for p in CONCEPTUAL_POSITION_GROUPS.get(position_conceptual_group, [])
-                            if p in assoc_probabilities[time_slot_context]
-                        ]
-                        if group_weights:
-                            current_weight *= max(group_weights) # Apply the strongest probability from the group
-                
+                if time_slot_context in assoc_probabilities and position_name in assoc_probabilities[time_slot_context]:
+                    current_weight *= assoc_probabilities[time_slot_context][position_name]
                 # Check general context probability (GeneralCeia/GeneralDraw)
                 elif "GeneralCeia" in assoc_probabilities and \
-                     (time_slot_context.startswith("AntesCeia") or time_slot_context.startswith("DepoisCeia")):
-                    if position_name in assoc_probabilities["GeneralCeia"]:
-                        current_weight *= assoc_probabilities["GeneralCeia"][position_name]
-                    elif position_conceptual_group:
-                        group_weights = [
-                            assoc_probabilities["GeneralCeia"][p]
-                            for p in CONCEPTUAL_POSITION_GROUPS.get(position_conceptual_group, [])
-                            if p in assoc_probabilities["GeneralCeia"]
-                        ]
-                        if group_weights:
-                            current_weight *= max(group_weights)
-                
-                elif "GeneralDraw" in assoc_probabilities and time_slot_context == "GeneralDraw":
-                    if position_name in assoc_probabilities["GeneralDraw"]:
-                        current_weight *= assoc_probabilities["GeneralDraw"][position_name]
-                    elif position_conceptual_group:
-                        group_weights = [
-                            assoc_probabilities["GeneralDraw"][p]
-                            for p in CONCEPTUAL_POSITION_GROUPS.get(position_conceptual_group, [])
-                            if p in assoc_probabilities["GeneralDraw"]
-                        ]
-                        if group_weights:
-                            current_weight *= max(group_weights)
+                     (time_slot_context.startswith("AntesCeia") or time_slot_context.startswith("DepoisCeia")) and \
+                     position_name in assoc_probabilities["GeneralCeia"]:
+                    current_weight *= assoc_probabilities["GeneralCeia"][position_name]
+                elif "GeneralDraw" in assoc_probabilities and \
+                     time_slot_context == "GeneralDraw" and \
+                     position_name in assoc_probabilities["GeneralDraw"]:
+                    current_weight *= assoc_probabilities["GeneralDraw"][position_name]
             
             eligible_associates.append(assoc)
             weights.append(current_weight)
@@ -562,7 +379,7 @@ def allocate_dinner_shifts(associates, exclusions, increased_probability, core_a
 
     return allocated_schedule, unallocated_associates_for_next_phase
 
-# --- Drawing Function (Including Activated Functions) ---
+# --- Drawing Function (Including Activated Functions) - ADAPTADA PARA WEB ---
 def draw_activated_functions(associates, exclusions, increased_probability, activate_extras_flag, num_draws_input):
     activate_extras = activate_extras_flag
     num_draws = num_draws_input
@@ -572,90 +389,84 @@ def draw_activated_functions(associates, exclusions, increased_probability, acti
 
     drawn_assignments = {} 
     available_associates_for_draw = list(associates) 
-    conceptual_role_pool_for_draw = list(ACTIVATED_FUNCTIONS) # Use this as the pool of functions to draw from
+    conceptual_role_pool_for_draw = list(ACTIVATED_FUNCTIONS) 
     random.shuffle(conceptual_role_pool_for_draw) 
 
     for i in range(num_draws):
         chosen_associate = None
-        chosen_conceptual_role = None # Now this will be an actual function name
+        chosen_conceptual_role = "(Não definido)"
 
-        if not conceptual_role_pool_for_draw: # If no more functions to draw
-            # Append a special key to ensure it's captured in the output even if no function is left
-            drawn_assignments[f"Função Extra {i+1} (Nenhuma Função Disponível)"] = "(Vazio)"
-            continue # Move to next draw, but it will also be empty if no associates
-
-        chosen_conceptual_role = conceptual_role_pool_for_draw.pop(0) # Take one function from the shuffled list
+        if conceptual_role_pool_for_draw:
+            chosen_conceptual_role = conceptual_role_pool_for_draw.pop(0) 
+        else:
+            chosen_conceptual_role = f"Posição Geral Extra {i+1}" 
         
         chosen_associate = choose_associate_with_rules(
             available_associates_for_draw, chosen_conceptual_role, "GeneralDraw", exclusions, increased_probability
         )
 
         if chosen_associate:
-            drawn_assignments[chosen_conceptual_role] = chosen_associate # Store only the function name as key for simplicity
+            drawn_assignments[f"Sorteio Posição {i+1} ({chosen_conceptual_role})"] = chosen_associate
             available_associates_for_draw.remove(chosen_associate)
         else:
-            drawn_assignments[chosen_conceptual_role] = "(Vazio/Nenhum Associado Elegível)"
+            drawn_assignments[f"Sorteio Posição {i+1} ({chosen_conceptual_role})"] = "(Vazio/Nenhum Associado Elegível)"
 
-        # If no more associates available, fill remaining draw slots as empty
         if not available_associates_for_draw and i < num_draws - 1:
             for j in range(i + 1, num_draws):
                 if conceptual_role_pool_for_draw:
                     remaining_role = conceptual_role_pool_for_draw.pop(0)
-                    drawn_assignments[remaining_role] = "(Vazio)"
+                    drawn_assignments[f"Sorteio Posição {j+1} ({remaining_role})"] = "(Vazio)"
                 else:
-                    drawn_assignments[f"Função Extra {j+1} (Nenhuma Função Disponível)"] = "(Vazio)"
-            break # Exit the loop as no more associates to assign
-            
+                    drawn_assignments[f"Sorteio Posição {j+1} (Vazio)"] = "(Vazio)"
+            break
     return drawn_assignments
 
-# --- Função para gerar o Excel em memória ---
+# --- Função para gerar o Excel em memória (ADAPTADA PARA WEB) ---
 def generate_excel_in_memory(allocated_schedule, drawn_assignments, all_unallocated_associates, model_workbook_path="modelo_escala.xlsx"):
     try:
+        # Carrega o modelo de escala do repositório GitHub (que o Streamlit monta como sistema de arquivos)
         workbook = load_workbook(model_workbook_path)
     except FileNotFoundError:
+        # Se o modelo não for encontrado, crie um novo workbook simples
         workbook = Workbook()
         sheet = workbook.active
         sheet.title = "Escala de Alocação"
+        # Adicione alguns cabeçalhos básicos para não ficar vazio
         sheet['A1'] = "Posição"
         sheet['B1'] = "Antes Ceia"
         sheet['C1'] = "Depois Ceia"
+        sheet['A17'] = "Funções Extras Sorteadas:"
+        sheet['F1'] = "Associados Não Alocados/Sorteados:"
     
     sheet = workbook.active
     
     # Mapeamento de células do Excel para as posições de ceia
     ceia_mapping = {
-        'Recirculação 1': {'AntesCeia': 'B2', 'DepoisCeia': 'C2'},
-        # Removidas Recirculação 2, 3 do mapeamento de ceia
-        'Pesado 1': {'AntesCeia': 'B5', 'DepoisCeia': 'C5'},
-        'Pesado 2': {'AntesCeia': 'B6', 'DepoisCeia': 'C6'},
-        'Auditoria 1': {'AntesCeia': 'B7', 'DepoisCeia': 'C7'},
-        # Removidas Auditoria 2, 3 do mapeamento de ceia
-        'Azul 1': {'AntesCeia': 'B10', 'DepoisCeia': 'C10'},
-        # Removida Azul 2 do mapeamento de ceia
-        'Shuttle 1': {'AntesCeia': 'B13', 'DepoisCeia': 'C13'},
-        # Removidas Shuttle 2, 3 do mapeamento de ceia
-        'Carregamento 1': {'AntesCeia': 'B16', 'DepoisCeia': 'C16'},
-        # Removida Carregamento 2 do mapeamento de ceia
-        'GAP 1': {'AntesCeia': 'B18', 'DepoisCeia': 'C18'}
-        # Removida GAP 2 do mapeamento de ceia
+        'Recirculação': {'AntesCeia': 'B2', 'DepoisCeia': 'C2'},
+        'Pesado': {'AntesCeia': 'B3', 'DepoisCeia': 'C3'},
+        'Auditoria 1': {'AntesCeia': 'B4', 'DepoisCeia': 'C4'},
+        'Auditoria 2': {'AntesCeia': 'B5', 'DepoisCeia': 'C5'},
+        'Azul': {'AntesCeia': 'B6', 'DepoisCeia': 'C6'},
+        'Shuttle 1': {'AntesCeia': 'B8', 'DepoisCeia': 'C8'},
+        'Shuttle 2': {'AntesCeia': 'B9', 'DepoisCeia': 'C9'},
+        'Shuttle 3': {'AntesCeia': 'B10', 'DepoisCeia': 'C10'},
+        'Shuttle 4': {'AntesCeia': 'B11', 'DepoisCeia': 'C11'},
+        'GAP': {'AntesCeia': 'B12', 'DepoisCeia': 'C12'},
+        'Carregamento': {'AntesCeia': 'B13', 'DepoisCeia': 'C13'},
     }
 
     # Limpar células de resultados anteriores (se houver)
-    for row_num in range(2, 20): # Limpa de B2:C19 (áreas da ceia)
+    for row_num in range(2, 14): # Linhas das posições de ceia
         sheet[f'B{row_num}'] = ""
         sheet[f'C{row_num}'] = ""
     
-    # Limpar funções ativas sorteadas - ATUALIZADO para Coluna G, linha 2
-    funcoes_ativas_col = 'G' 
-    funcoes_ativas_start_row = 2 
-    # Limpa uma quantidade suficiente de linhas na coluna G para os sorteados
-    for row_num in range(funcoes_ativas_start_row, funcoes_ativas_start_row + len(ACTIVATED_FUNCTIONS) + 5): 
-        sheet[f'{funcoes_ativas_col}{row_num}'] = ""
-    
-    # Limpar não alocados - ATUALIZADO para Coluna F, linha 2
+    funcoes_ativas_start_row = 18
+    for row_num in range(funcoes_ativas_start_row, funcoes_ativas_start_row + 20): # Limpar funções extras
+        sheet[f'C{row_num}'] = "" # Coluna onde o associado é escrito
+
     unallocated_text_col = 'F'
-    unallocated_text_start_row = 2 
-    for row_num in range(unallocated_text_start_row, unallocated_text_start_row + 30): # Limpa um número razoável de linhas
+    unallocated_text_row = 2
+    for row_num in range(unallocated_text_row, unallocated_text_row + 30): # Limpar não alocados
         sheet[f'{unallocated_text_col}{row_num}'] = ""
     
     # Escrever alocações de ceia
@@ -665,27 +476,17 @@ def generate_excel_in_memory(allocated_schedule, drawn_assignments, all_unalloca
             cell = ceia_mapping[position_name][time_slot]
             sheet[cell] = associate
 
-    # Escrever atribuições do sorteio - ATUALIZADO
-    current_active_row = funcoes_ativas_start_row # Começa na linha 2 na coluna G
-    
-    # Prepare items to write, ensuring functions from ACTIVATED_FUNCTIONS appear first
-    sorted_drawn_output = []
-    for func_name in ACTIVATED_FUNCTIONS:
-        if func_name in drawn_assignments:
-            sorted_drawn_output.append((func_name, drawn_assignments[func_name]))
-    
-    # Add any other keys from drawn_assignments that might not be in ACTIVATED_FUNCTIONS (e.g., "(Nenhuma Função Disponível)")
-    for key, value in drawn_assignments.items():
-        if not any(key == item[0] for item in sorted_drawn_output): # If this key wasn't added from ACTIVATED_FUNCTIONS
-            sorted_drawn_output.append((key, value))
-
-    for func_name, associate in sorted_drawn_output:
-        # Format: "Função: Associado"
-        sheet[f'{funcoes_ativas_col}{current_active_row}'] = f"{func_name}: {associate}"
+    # Escrever atribuições do sorteio
+    current_active_row = funcoes_ativas_start_row
+    sorted_drawn_assignments_excel = sorted(drawn_assignments.items(), key=lambda item: int(item[0].split(' ')[2]))
+    for full_pos_key, associate in sorted_drawn_assignments_excel:
+        # sheet[f'B{current_active_row}'] = full_pos_key # Coluna para o nome da função (opcional, se o modelo tiver)
+        if not associate.startswith('('): # Não escreve "(Vazio)"
+            sheet[f'C{current_active_row}'] = associate
         current_active_row += 1
 
-    # Escrever associados não alocados/sorteados - ATUALIZADO
-    current_unallocated_row = unallocated_text_start_row # Começa na linha 2 na coluna F
+    # Escrever associados não alocados/sorteados
+    current_unallocated_row = unallocated_text_row
     for assoc in all_unallocated_associates:
         sheet[f'{unallocated_text_col}{current_unallocated_row}'] = f"- {assoc}"
         current_unallocated_row += 1
@@ -696,11 +497,11 @@ def generate_excel_in_memory(allocated_schedule, drawn_assignments, all_unalloca
     buffer.seek(0) # Retorna o ponteiro para o início do buffer
     return buffer.getvalue() # Retorna os bytes do arquivo Excel
 
-# --- Streamlit App Interface (Mantido como estava) ---
-st.set_page_config(page_title="Alocador de Escalas - Sorteio Prime", page_icon="📊", layout="centered")
+# --- Streamlit App Interface ---
+st.set_page_config(page_title="Alocador de Escalas", page_icon="📊", layout="centered")
 
-st.title("📊 Alocador Automático de Escalas e Sorteios (Sorteio Prime)")
-st.markdown("Bem-vindo ao seu assistente de alocação de equipes para o **Prime Day**!")
+st.title("📊 Alocador Automático de Escalas e Sorteios")
+st.markdown("Bem-vindo ao seu assistente de alocação de equipes!")
 st.markdown("---")
 
 # --- 1. Carregar Associados ---
@@ -748,22 +549,14 @@ if st.button("🚀 Iniciar Alocação de Ceia", disabled=not associates):
             ceia_data = []
             
             # Ordena a exibição para o usuário
-            def sort_key(item_tuple):
-                item_key = item_tuple[0]
+            def sort_key(item_tuple): # CORREÇÃO AQUI: Recebe a tupla (chave, valor)
+                item_key = item_tuple[0] # Pega apenas a chave da tupla
                 time_slot_part, pos_name_part = item_key.split(" - ")
                 time_slot_order = 0 if time_slot_part == "AntesCeia" else 1
-                
-                pos_order_map = {
-                    "Recirculação 1": 0,
-                    "Pesado 1": 1, "Pesado 2": 2,
-                    "Auditoria 1": 3,
-                    "Azul 1": 4,
-                    "Shuttle 1": 5,
-                    "Carregamento 1": 6,
-                    "GAP 1": 7
-                }
-                pos_order = pos_order_map.get(pos_name_part, len(pos_order_map))
-
+                try:
+                    pos_order = CORE_POSITIONS.index(pos_name_part)
+                except ValueError:
+                    pos_order = len(CORE_POSITIONS) # Posições desconhecidas vão para o final
                 return (time_slot_order, pos_order)
 
             sorted_schedule_items = sorted(allocated_schedule.items(), key=sort_key)
@@ -818,28 +611,16 @@ else:
                     num_draws # num_draws_input
                 )
                 st.session_state['drawn_assignments'] = drawn_assignments
-                # Store the option in session state for later use in file naming
-                st.session_state['activate_extras_option'] = activate_extras_option
 
                 st.subheader("✅ Atribuições do Sorteio Finalizadas:")
                 drawn_data = []
-                # Display in the order of ACTIVATED_FUNCTIONS
-                for func_name in ACTIVATED_FUNCTIONS:
-                    if func_name in drawn_assignments:
-                        drawn_data.append({"Posição Sorteada": func_name, "Associado": drawn_assignments[func_name]})
-                # Add any "Nenhuma Função Disponível" entries
-                for key, value in drawn_assignments.items():
-                    if key not in ACTIVATED_FUNCTIONS:
-                         drawn_data.append({"Posição Sorteada": key, "Associado": value})
-
-
+                for pos, assoc in sorted(drawn_assignments.items()):
+                    drawn_data.append({"Posição Sorteada": pos, "Associado": assoc})
                 st.dataframe(pd.DataFrame(drawn_data))
                 st.success("Sorteio Concluído!")
         elif activate_extras_option == "Não":
             st.info("Sorteio de funções extras desativado.")
             st.session_state['drawn_assignments'] = {} # Garante que está vazio se não sorteou
-            # Store the option in session state for later use in file naming
-            st.session_state['activate_extras_option'] = activate_extras_option
         else:
             st.warning("Número de sorteios deve ser maior que zero se ativado.")
 
@@ -851,20 +632,11 @@ st.header("4. Baixar Escala Completa em Excel")
 allocated_schedule = st.session_state.get('allocated_schedule', {})
 drawn_assignments = st.session_state.get('drawn_assignments', {})
 initial_associates_set = st.session_state.get('initial_associates_set', set())
-activate_extras_option_state = st.session_state.get('activate_extras_option', "Não") # Default to "Não" if not set
 
 if not allocated_schedule:
     st.warning("Por favor, execute a alocação de ceia primeiro para gerar o Excel.")
 else:
-    # Determine file name based on user's choice for extra functions
-    if activate_extras_option_state == "Sim":
-        file_name_excel = "escala_equipe_prime.xlsx"
-        download_label = "Clique para Baixar 'escala_equipe_prime.xlsx'"
-    else:
-        file_name_excel = "escala_equipe.xlsx"
-        download_label = "Clique para Baixar 'escala_equipe.xlsx'"
-
-    if st.button("💾 Gerar e Baixar Escala Completa em Excel", key="download_excel_button_final"):
+    if st.button("💾 Gerar e Baixar Escala Completa em Excel", key="download_excel_button"):
         with st.spinner("Gerando arquivo Excel..."):
             # Obter todos os associados alocados/sorteados para a lista final de não alocados
             final_allocated_associates_set = set()
@@ -872,7 +644,7 @@ else:
                 if not assoc.startswith('('):
                     final_allocated_associates_set.add(assoc)
             for assoc in drawn_assignments.values():
-                if not assoc.startswith('('): # Only add if not a "Vazio" entry
+                if not assoc.startswith('('):
                     final_allocated_associates_set.add(assoc)
             
             all_unallocated_associates_overall = list(initial_associates_set - final_allocated_associates_set)
@@ -887,9 +659,9 @@ else:
                 )
                 
                 st.download_button(
-                    label=download_label,
+                    label="Clique para Baixar 'escala_da_equipe.xlsx'",
                     data=excel_bytes,
-                    file_name=file_name_excel,
+                    file_name="escala_da_equipe.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 st.success("Arquivo Excel gerado com sucesso!")
