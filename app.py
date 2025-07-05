@@ -528,4 +528,385 @@ def allocate_dinner_shifts(associates, exclusions, increased_probability, core_a
         if not allocated_schedule.get(full_pos_str):
             time_slot, position_name = full_pos_str.split(" - ")
             
-            dynamic_exclusions_for_this_slot = collections.defaultd
+            dynamic_exclusions_for_this_slot = collections.defaultdict(list)
+            
+            for assoc_to_consider in associates_eligible_for_depois_ceia:
+                if assoc_to_consider in antes_ceia_allocations_info:
+                    antes_ceia_info = antes_ceia_allocations_info[assoc_to_consider]
+                    
+                    dynamic_exclusions_for_this_slot[assoc_to_consider].append(antes_ceia_info["exact_position"])
+                    
+                    conceptual_group_name = antes_ceia_info["conceptual_group"]
+                    if conceptual_group_name in CONCEPTUAL_POSITION_GROUPS:
+                        for pos_in_group in CONCEPTUAL_POSITION_GROUPS[conceptual_group_name]:
+                            if pos_in_group not in dynamic_exclusions_for_this_slot[assoc_to_consider]:
+                                dynamic_exclusions_for_this_slot[assoc_to_consider].append(pos_in_group)
+
+            chosen_associate = choose_associate_with_rules(
+                associates_eligible_for_depois_ceia, position_name, time_slot, exclusions, increased_probability,
+                additional_exclusions_for_assoc=dynamic_exclusions_for_this_slot
+            )
+            
+            if chosen_associate:
+                allocated_schedule[full_pos_str] = chosen_associate
+                associate_ceia_slots_count[chosen_associate] += 1
+                associates_eligible_for_depois_ceia.remove(chosen_associate)
+            else:
+                allocated_schedule[full_pos_str] = "(Vazio/Nenhum Associado Elegível)"
+    
+    unallocated_associates_for_next_phase = []
+    for assoc in associates:
+        target_slots = 2 if assoc in core_associates_for_dinner else 1
+        if associate_ceia_slots_count[assoc] < target_slots:
+            unallocated_associates_for_next_phase.append(assoc)
+
+    return allocated_schedule, unallocated_associates_for_next_phase
+
+# --- Drawing Function (Including Activated Functions) ---
+def draw_activated_functions(associates, exclusions, increased_probability, activate_extras_flag, num_draws_input):
+    activate_extras = activate_extras_flag
+    num_draws = num_draws_input
+
+    if not activate_extras or num_draws <= 0:
+        return {}
+
+    drawn_assignments = {} 
+    available_associates_for_draw = list(associates) 
+    conceptual_role_pool_for_draw = list(ACTIVATED_FUNCTIONS) # Use this as the pool of functions to draw from
+    random.shuffle(conceptual_role_pool_for_draw) 
+
+    for i in range(num_draws):
+        chosen_associate = None
+        chosen_conceptual_role = None # Now this will be an actual function name
+
+        if not conceptual_role_pool_for_draw: # If no more functions to draw
+            # Append a special key to ensure it's captured in the output even if no function is left
+            drawn_assignments[f"Função Extra {i+1} (Nenhuma Função Disponível)"] = "(Vazio)"
+            continue # Move to next draw, but it will also be empty if no associates
+
+        chosen_conceptual_role = conceptual_role_pool_for_draw.pop(0) # Take one function from the shuffled list
+        
+        chosen_associate = choose_associate_with_rules(
+            available_associates_for_draw, chosen_conceptual_role, "GeneralDraw", exclusions, increased_probability
+        )
+
+        if chosen_associate:
+            drawn_assignments[chosen_conceptual_role] = chosen_associate # Store only the function name as key for simplicity
+            available_associates_for_draw.remove(chosen_associate)
+        else:
+            drawn_assignments[chosen_conceptual_role] = "(Vazio/Nenhum Associado Elegível)"
+
+        # If no more associates available, fill remaining draw slots as empty
+        if not available_associates_for_draw and i < num_draws - 1:
+            for j in range(i + 1, num_draws):
+                if conceptual_role_pool_for_draw:
+                    remaining_role = conceptual_role_pool_for_draw.pop(0)
+                    drawn_assignments[remaining_role] = "(Vazio)"
+                else:
+                    drawn_assignments[f"Função Extra {j+1} (Nenhuma Função Disponível)"] = "(Vazio)"
+            break # Exit the loop as no more associates to assign
+            
+    return drawn_assignments
+
+# --- Função para gerar o Excel em memória ---
+def generate_excel_in_memory(allocated_schedule, drawn_assignments, all_unallocated_associates, model_workbook_path="modelo_escala.xlsx"):
+    try:
+        workbook = load_workbook(model_workbook_path)
+    except FileNotFoundError:
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.title = "Escala de Alocação"
+        sheet['A1'] = "Posição"
+        sheet['B1'] = "Antes Ceia"
+        sheet['C1'] = "Depois Ceia"
+    
+    sheet = workbook.active
+    
+    # Mapeamento de células do Excel para as posições de ceia
+    ceia_mapping = {
+        'Recirculação 1': {'AntesCeia': 'B2', 'DepoisCeia': 'C2'},
+        # Removidas Recirculação 2, 3 do mapeamento de ceia
+        'Pesado 1': {'AntesCeia': 'B5', 'DepoisCeia': 'C5'},
+        'Pesado 2': {'AntesCeia': 'B6', 'DepoisCeia': 'C6'},
+        'Auditoria 1': {'AntesCeia': 'B7', 'DepoisCeia': 'C7'},
+        # Removidas Auditoria 2, 3 do mapeamento de ceia
+        'Azul 1': {'AntesCeia': 'B10', 'DepoisCeia': 'C10'},
+        # Removida Azul 2 do mapeamento de ceia
+        'Shuttle 1': {'AntesCeia': 'B13', 'DepoisCeia': 'C13'},
+        # Removidas Shuttle 2, 3 do mapeamento de ceia
+        'Carregamento 1': {'AntesCeia': 'B16', 'DepoisCeia': 'C16'},
+        # Removida Carregamento 2 do mapeamento de ceia
+        'GAP 1': {'AntesCeia': 'B18', 'DepoisCeia': 'C18'}
+        # Removida GAP 2 do mapeamento de ceia
+    }
+
+    # Limpar células de resultados anteriores (se houver)
+    for row_num in range(2, 20): # Limpa de B2:C19 (áreas da ceia)
+        sheet[f'B{row_num}'] = ""
+        sheet[f'C{row_num}'] = ""
+    
+    # Limpar funções ativas sorteadas - ATUALIZADO para Coluna G, linha 2
+    funcoes_ativas_col = 'G' 
+    funcoes_ativas_start_row = 2 
+    # Limpa uma quantidade suficiente de linhas na coluna G para os sorteados
+    for row_num in range(funcoes_ativas_start_row, funcoes_ativas_start_row + len(ACTIVATED_FUNCTIONS) + 5): 
+        sheet[f'{funcoes_ativas_col}{row_num}'] = ""
+    
+    # Limpar não alocados - ATUALIZADO para Coluna F, linha 2
+    unallocated_text_col = 'F'
+    unallocated_text_start_row = 2 
+    for row_num in range(unallocated_text_start_row, unallocated_text_start_row + 30): # Limpa um número razoável de linhas
+        sheet[f'{unallocated_text_col}{row_num}'] = ""
+    
+    # Escrever alocações de ceia
+    for full_pos_str, associate in allocated_schedule.items():
+        time_slot, position_name = full_pos_str.split(" - ")
+        if position_name in ceia_mapping and time_slot in ceia_mapping[position_name]:
+            cell = ceia_mapping[position_name][time_slot]
+            sheet[cell] = associate
+
+    # Escrever atribuições do sorteio - ATUALIZADO
+    current_active_row = funcoes_ativas_start_row # Começa na linha 2 na coluna G
+    
+    # Prepare items to write, ensuring functions from ACTIVATED_FUNCTIONS appear first
+    sorted_drawn_output = []
+    for func_name in ACTIVATED_FUNCTIONS:
+        if func_name in drawn_assignments:
+            sorted_drawn_output.append((func_name, drawn_assignments[func_name]))
+    
+    # Add any other keys from drawn_assignments that might not be in ACTIVATED_FUNCTIONS (e.g., "(Nenhuma Função Disponível)")
+    for key, value in drawn_assignments.items():
+        if not any(key == item[0] for item in sorted_drawn_output): # If this key wasn't added from ACTIVATED_FUNCTIONS
+            sorted_drawn_output.append((key, value))
+
+    for func_name, associate in sorted_drawn_output:
+        # Format: "Função: Associado"
+        sheet[f'{funcoes_ativas_col}{current_active_row}'] = f"{func_name}: {associate}"
+        current_active_row += 1
+
+    # Escrever associados não alocados/sorteados - ATUALIZADO
+    current_unallocated_row = unallocated_text_start_row # Começa na linha 2 na coluna F
+    for assoc in all_unallocated_associates:
+        sheet[f'{unallocated_text_col}{current_unallocated_row}'] = f"- {assoc}"
+        current_unallocated_row += 1
+
+    # Salva o workbook em um buffer de bytes
+    buffer = io.BytesIO()
+    workbook.save(buffer)
+    buffer.seek(0) # Retorna o ponteiro para o início do buffer
+    return buffer.getvalue() # Retorna os bytes do arquivo Excel
+
+# --- Streamlit App Interface (Mantido como estava) ---
+st.set_page_config(page_title="Alocador de Escalas - Sorteio Prime", page_icon="📊", layout="centered")
+
+st.title("📊 Alocador Automático de Escalas e Sorteios (Sorteio Prime)")
+st.markdown("Bem-vindo ao seu assistente de alocação de equipes para o **Prime Day**!")
+st.markdown("---")
+
+# --- 1. Carregar Associados ---
+st.header("1. Carregar Lista de Associados")
+st.info("Por favor, carregue um arquivo `.txt` contendo os nomes dos associados, um por linha.")
+uploaded_associates_file = st.file_uploader("Arraste ou clique para carregar 'associados.txt'", type="txt", key="associates_uploader")
+
+associates = []
+if uploaded_associates_file is not None:
+    try:
+        raw_associates = [line.strip() for line in uploaded_associates_file.getvalue().decode("utf-8").splitlines() if line.strip()]
+        # Remover duplicatas mantendo a ordem original
+        seen = set()
+        associates = [x for x in raw_associates if not (x in seen or seen.add(x))]
+        
+        if associates:
+            st.success(f"Arquivo 'associados.txt' carregado com sucesso! ({len(associates)} associados)")
+            st.write("Associados carregados:", associates)
+            st.session_state['initial_associates_set'] = set(associates) # Salva para controle final
+        else:
+            st.warning("O arquivo 'associados.txt' está vazio ou não contém nomes válidos.")
+            st.session_state['initial_associates_set'] = set()
+    except Exception as e:
+        st.error(f"Erro ao ler 'associados.txt': {e}. Verifique se o formato está correto.")
+        st.session_state['initial_associates_set'] = set()
+else:
+    st.session_state['initial_associates_set'] = set()
+
+
+st.markdown("---")
+
+# --- 2. Executar Alocação de Ceia ---
+st.header("2. Alocação de Escala de Ceia")
+
+if st.button("🚀 Iniciar Alocação de Ceia", disabled=not associates):
+    if associates:
+        with st.spinner("Alocando posições de ceia..."):
+            allocated_schedule, unallocated_from_ceia_for_draw = allocate_dinner_shifts(
+                list(associates), EXCLUSIONS, INCREASED_PROBABILITY, CORE_ASSOCIATES_FOR_DINNER
+            )
+            st.session_state['allocated_schedule'] = allocated_schedule
+            st.session_state['unallocated_for_draw'] = unallocated_from_ceia_for_draw
+
+            st.subheader("✅ Escala da Ceia Gerada:")
+            ceia_data = []
+            
+            # Ordena a exibição para o usuário
+            def sort_key(item_tuple):
+                item_key = item_tuple[0]
+                time_slot_part, pos_name_part = item_key.split(" - ")
+                time_slot_order = 0 if time_slot_part == "AntesCeia" else 1
+                
+                pos_order_map = {
+                    "Recirculação 1": 0,
+                    "Pesado 1": 1, "Pesado 2": 2,
+                    "Auditoria 1": 3,
+                    "Azul 1": 4,
+                    "Shuttle 1": 5,
+                    "Carregamento 1": 6,
+                    "GAP 1": 7
+                }
+                pos_order = pos_order_map.get(pos_name_part, len(pos_order_map))
+
+                return (time_slot_order, pos_order)
+
+            sorted_schedule_items = sorted(allocated_schedule.items(), key=sort_key)
+
+            for full_pos_str, assoc in sorted_schedule_items:
+                ceia_data.append({"Posição na Ceia": full_pos_str.replace("AntesCeia - ", "").replace("DepoisCeia - ", ""), "Associado": assoc})
+            
+            st.dataframe(pd.DataFrame(ceia_data))
+            
+            if unallocated_from_ceia_for_draw:
+                st.info(f"**{len(unallocated_from_ceia_for_draw)}** associados estão elegíveis para o sorteio de funções extras.")
+                st.write("Associados disponíveis para sorteio:", unallocated_from_ceia_for_draw)
+            else:
+                st.info("Todos os associados elegíveis foram alocados na ceia (ou não há mais elegíveis para sorteio).")
+            
+            st.success("Alocação de Ceia Concluída! Prossiga para o sorteio, se desejar.")
+    else:
+        st.warning("Por favor, carregue a lista de associados primeiro.")
+
+st.markdown("---")
+
+# --- 3. Sorteio de Funções Extras ---
+st.header("3. Sorteio de Funções Extras")
+
+unallocated_for_draw = st.session_state.get('unallocated_for_draw', [])
+max_draws = len(ACTIVATED_FUNCTIONS) # Número máximo de funções ativadas
+max_associates_for_draw = len(unallocated_for_draw)
+
+if not unallocated_for_draw:
+    st.warning("Nenhum associado disponível para sorteio de funções extras. Execute a alocação de ceia primeiro.")
+else:
+    activate_extras_option = st.radio(
+        "Deseja ativar as funções extras?",
+        ("Sim", "Não"), index=1, key="activate_extras_radio"
+    )
+    
+    num_draws = 0
+    if activate_extras_option == "Sim":
+        st.info(f"Atualmente, há {max_associates_for_draw} associados disponíveis e {max_draws} funções extras possíveis.")
+        num_draws = st.number_input(
+            f"Quantas funções extras deseja sortear? (Máximo: {min(max_draws, max_associates_for_draw)})",
+            min_value=0, max_value=min(max_draws, max_associates_for_draw), value=min(max_draws, max_associates_for_draw), key="num_draws_input"
+        )
+
+    if st.button("🎲 Executar Sorteio de Funções Extras", disabled=(activate_extras_option == "Sim" and num_draws == 0) or not unallocated_for_draw, key="draw_button"):
+        if activate_extras_option == "Sim" and num_draws > 0:
+            with st.spinner("Executando sorteio de funções..."):
+                drawn_assignments = draw_activated_functions(
+                    list(unallocated_for_draw), # Passa uma cópia para a função
+                    EXCLUSIONS, INCREASED_PROBABILITY,
+                    True, # activate_extras_flag
+                    num_draws # num_draws_input
+                )
+                st.session_state['drawn_assignments'] = drawn_assignments
+                # Store the option in session state for later use in file naming
+                st.session_state['activate_extras_option'] = activate_extras_option
+
+                st.subheader("✅ Atribuições do Sorteio Finalizadas:")
+                drawn_data = []
+                # Display in the order of ACTIVATED_FUNCTIONS
+                for func_name in ACTIVATED_FUNCTIONS:
+                    if func_name in drawn_assignments:
+                        drawn_data.append({"Posição Sorteada": func_name, "Associado": drawn_assignments[func_name]})
+                # Add any "Nenhuma Função Disponível" entries
+                for key, value in drawn_assignments.items():
+                    if key not in ACTIVATED_FUNCTIONS:
+                         drawn_data.append({"Posição Sorteada": key, "Associado": value})
+
+
+                st.dataframe(pd.DataFrame(drawn_data))
+                st.success("Sorteio Concluído!")
+        elif activate_extras_option == "Não":
+            st.info("Sorteio de funções extras desativado.")
+            st.session_state['drawn_assignments'] = {} # Garante que está vazio se não sorteou
+            # Store the option in session state for later use in file naming
+            st.session_state['activate_extras_option'] = activate_extras_option
+        else:
+            st.warning("Número de sorteios deve ser maior que zero se ativado.")
+
+st.markdown("---")
+
+# --- 4. Baixar Escala Final ---
+st.header("4. Baixar Escala Completa em Excel")
+
+allocated_schedule = st.session_state.get('allocated_schedule', {})
+drawn_assignments = st.session_state.get('drawn_assignments', {})
+initial_associates_set = st.session_state.get('initial_associates_set', set())
+activate_extras_option_state = st.session_state.get('activate_extras_option', "Não") # Default to "Não" if not set
+
+if not allocated_schedule:
+    st.warning("Por favor, execute a alocação de ceia primeiro para gerar o Excel.")
+else:
+    # Determine file name based on user's choice for extra functions
+    if activate_extras_option_state == "Sim":
+        file_name_excel = "escala_equipe_prime.xlsx"
+        download_label = "Clique para Baixar 'escala_equipe_prime.xlsx'"
+    else:
+        file_name_excel = "escala_equipe.xlsx"
+        download_label = "Clique para Baixar 'escala_equipe.xlsx'"
+
+    if st.button("💾 Gerar e Baixar Escala Completa em Excel", key="download_excel_button_final"):
+        with st.spinner("Gerando arquivo Excel..."):
+            # Obter todos os associados alocados/sorteados para a lista final de não alocados
+            final_allocated_associates_set = set()
+            for assoc in allocated_schedule.values():
+                if not assoc.startswith('('):
+                    final_allocated_associates_set.add(assoc)
+            for assoc in drawn_assignments.values():
+                if not assoc.startswith('('): # Only add if not a "Vazio" entry
+                    final_allocated_associates_set.add(assoc)
+            
+            all_unallocated_associates_overall = list(initial_associates_set - final_allocated_associates_set)
+            all_unallocated_associates_overall.sort() # Para manter a ordem
+
+            try:
+                excel_bytes = generate_excel_in_memory(
+                    allocated_schedule, 
+                    drawn_assignments, 
+                    all_unallocated_associates_overall,
+                    "modelo_escala.xlsx" # Nome do arquivo do modelo que deve estar no GitHub
+                )
+                
+                st.download_button(
+                    label=download_label,
+                    data=excel_bytes,
+                    file_name=file_name_excel,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                )
+                st.success("Arquivo Excel gerado com sucesso!")
+
+                if all_unallocated_associates_overall:
+                    st.subheader("Associados Restantes (Não Alocados/Sorteados em Nenhuma Posição):")
+                    for assoc in all_unallocated_associates_overall:
+                        st.write(f"- {assoc}")
+                else:
+                    st.info("🎉 Todos os associados foram alocados/sorteados para alguma posição!")
+
+            except Exception as e:
+                st.error(f"Ocorreu um erro ao gerar o arquivo Excel: {e}")
+                st.warning("Verifique se o 'modelo_escala.xlsx' está no formato correto e na mesma pasta do 'app.py' no seu repositório GitHub.")
+
+st.markdown("---")
+
+# --- Rodapé ---
+st.markdown("Esta aplicação foi desenvolvida por **Rinalanc/Github**.")
+st.markdown("Data: 30/06/2025")
